@@ -1,39 +1,75 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
 const multer = require('multer');
+const mongoose = require('mongoose');
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
+/* =========================
+   MONGODB
+========================= */
+
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log('MongoDB connected'))
+    .catch(err => console.error(err));
+
+const ReviewSchema = new mongoose.Schema({
+    name: String,
+    city: String,
+    text: String,
+    rating: Number,
+    photos: Array,
+    date: String
+});
+
+const Review = mongoose.model('Review', ReviewSchema);
+
+/* =========================
+   FILE UPLOAD
+========================= */
+
 const upload = multer({ dest: 'uploads/' });
 
-const DB_FILE = 'reviews.json';
+app.use('/uploads', express.static('uploads'));
 
-// GET REVIEWS
-app.get('/reviews', (req, res) => {
-    const data = fs.existsSync(DB_FILE)
-        ? JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))
-        : [];
-    res.json(data);
+/* =========================
+   GET REVIEWS
+========================= */
+
+app.get('/reviews', async (req, res) => {
+    try {
+        const reviews = await Review.find().sort({ _id: -1 });
+        res.json(reviews);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// POST REVIEW
-app.post('/reviews', (req, res) => {
-    const data = fs.existsSync(DB_FILE)
-        ? JSON.parse(fs.readFileSync(DB_FILE, 'utf8'))
-        : [];
+/* =========================
+   POST REVIEW
+========================= */
 
-    data.unshift(req.body);
+app.post('/reviews', async (req, res) => {
+    try {
+        const review = new Review(req.body);
 
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+        await review.save();
 
-    res.json({ success: true });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// UPLOAD PHOTOS
+/* =========================
+   UPLOAD PHOTOS
+========================= */
+
 app.post('/upload', upload.array('photos', 3), (req, res) => {
+
     const files = req.files.map(f => ({
         url: `${req.protocol}://${req.get('host')}/uploads/${f.filename}`
     }));
@@ -41,7 +77,12 @@ app.post('/upload', upload.array('photos', 3), (req, res) => {
     res.json({ files });
 });
 
-app.use('/uploads', express.static('uploads'));
+/* =========================
+   START SERVER
+========================= */
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('Server started'));
+
+app.listen(PORT, () => {
+    console.log(`Server started on port ${PORT}`);
+});
